@@ -4,13 +4,21 @@ class Planet {
   constructor(x, y) {
     this.x = x;
     this.y = y;
+    this.color = random([
+      "pink",
+      "lightblue",
+      "yellow",
+      "lightpurple",
+      "green",
+    ]);
   }
 
   draw() {
     //wiggle the planet's position lightly
     this.x += random(-1, 1);
     this.y += random(-1, 1);
-    fill(150, 0, 200);
+    noStroke();
+    fill(this.color);
     ellipse(this.x, this.y, 50, 50);
   }
 }

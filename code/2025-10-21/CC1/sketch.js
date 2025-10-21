@@ -11,6 +11,7 @@ function setup() {
   createCanvas(windowWidth, windowHeight);
   rectMode(CENTER);
   angleMode(DEGREES);
+  //colorMode(HSB);
   cols = width / size;
   rows = height / size;
 
