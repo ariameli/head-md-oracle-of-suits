@@ -7,6 +7,10 @@ class Planet {
   }
 
   draw() {
+    //wiggle the planet's position lightly
+    this.x += random(-1, 1);
+    this.y += random(-1, 1);
+    fill(150, 0, 200);
     ellipse(this.x, this.y, 50, 50);
   }
 }
