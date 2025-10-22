@@ -1,14 +1,39 @@
+"use strict";
+
+let distMouse = 30;
+let capture;
+let cols;
+let rows;
+let size = 10;
+let offset = 4;
+let blocks = [];
 let drawing = [];
 let prevPointer = { x: null, y: null };
+let currPointer = { x: null, y: null }; // added current pointer for index finger
 
 function setup() {
   // full window canvas
   createCanvas(windowWidth, windowHeight);
+  capture = createCapture(VIDEO, { flipped: true });
+  capture.size(100, 180);
+  capture.hide();
 
   // initialize MediaPipe settings
   setupHands();
   // start camera using MediaPipeHands.js helper
   setupVideo();
+  rectMode(CENTER);
+  angleMode(DEGREES);
+  //colorMode(HSB);
+  cols = width / size;
+  rows = height / size;
+
+  for (let i = 0; i < cols; i++) {
+    blocks[i] = [];
+    for (let j = 0; j < rows; j++) {
+      blocks[i][j] = new Block(size / 2 + i * size, size / 2 + j * size);
+    }
+  }
 }
 
 function windowResized() {
@@ -18,19 +43,24 @@ function windowResized() {
 function draw() {
   // clear the canvas
   background(255);
+  // load current webcam pixels once per frame
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      blocks[i][j].display();
+      blocks[i][j].move();
+    }
+  }
+
+  image(capture, 0, 0, 120, 100);
 
   // if the video connection is ready
   if (isVideoReady()) {
     // draw the capture image
-    image(videoElement, 0, 0);
+    //image(videoElement, 0, 0);
   }
 
   // use thicker lines for drawing hand connections
   strokeWeight(2);
-
-  console.log(prevPointer.x, prevPointer.y);
-
-  console.log(detections);
 
   // make sure we have detections to draw
   if (detections) {
@@ -39,25 +69,21 @@ function draw() {
       // draw the index finger
       drawIndex(hand);
       // draw the thumb finger
-      drawThumb(hand);
+      //drawThumb(hand);
       // draw fingertip points
-      drawTips(hand);
+      //drawTips(hand);
       // draw connections
-      drawConnections(hand);
+      //drawConnections(hand);
       // draw all landmarks
-      drawLandmarks(hand);
+      //drawLandmarks(hand);
     } // end of hands loop
-  } // end of if detections
-
-  drawing.forEach((p) => {
-    push();
-    fill(0, 255, 255);
-    stroke(0, 255, 255);
-    strokeWeight(10);
-
-    line(p[0], p[1], p[2], p[3]);
-    pop();
-  });
+  } else {
+    // no detections — clear current pointer so blocks won't react
+    currPointer.x = null;
+    currPointer.y = null;
+    prevPointer.x = null;
+    prevPointer.y = null;
+  }
 } // end of draw
 
 // only the index finger tip landmark
@@ -73,6 +99,10 @@ function drawIndex(landmarks) {
   let x = mark.x * videoElement.width;
   let y = mark.y * videoElement.height;
   circle(x, y, 20);
+
+  // update current pointer with index finger coordinates
+  currPointer.x = x;
+  currPointer.y = y;
 
   // if previous pointer is not set, initializes it
   if (prevPointer.x === null && prevPointer.y === null) {
