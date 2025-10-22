@@ -31,6 +31,7 @@ let blocks = [];
 let drawing = [];
 let prevPointer = { x: null, y: null };
 let currPointer = { x: null, y: null }; // added current pointer for index finger
+let indexes = [];
 
 function setup() {
   // full window canvas
@@ -84,29 +85,36 @@ function draw() {
       // draw the index finger
       drawIndex(hand);
       // draw the thumb finger
-      drawThumb(hand);
+      //drawThumb(hand);
       // draw fingertip points
       //drawTips(hand);
       // draw connections
       //drawConnections(hand);
       // draw all landmarks
       //drawLandmarks(hand);
-      let thumb = hand[FINGER_TIPS.thumb];
+      //let thumb = hand[FINGER_TIPS.thumb];
       let index = hand[FINGER_TIPS.index];
-      fill(0, 255, 0);
-      noStroke();
-      circle(thumb.x * videoElement.width, thumb.y * videoElement.height, 10);
-      circle(index.x * videoElement.width, index.y * videoElement.height, 10);
-
-      bridge.bodies[0].position.x = thumb.x * videoElement.width;
-      bridge.bodies[0].position.y = thumb.y * videoElement.height;
-      bridge.bodies[bridge.bodies.length - 1].position.x =
-        index.x * videoElement.width;
-      bridge.bodies[bridge.bodies.length - 1].position.y =
-        index.y * videoElement.height;
-      bridge.display();
+      indexes.push(index);
     } // end of hands loop
   }
+  fill(0, 255, 0);
+  noStroke();
+  indexes.forEach((index) => {
+    circle(index.x * videoElement.width, index.y * videoElement.height, 10);
+  });
+  console.log("indexes length:", indexes);
+  //indexes = [];
+
+  if (indexes.length === 2) {
+    bridge.bodies[0].position.x = indexes[0].x * videoElement.width;
+    bridge.bodies[0].position.y = indexes[0].y * videoElement.height;
+    bridge.bodies[bridge.bodies.length - 1].position.x =
+      indexes[1].x * videoElement.width;
+    bridge.bodies[bridge.bodies.length - 1].position.y =
+      indexes[1].y * videoElement.height;
+    bridge.display();
+  }
+  indexes = [];
 } // end of draw
 
 // only the index finger tip landmark

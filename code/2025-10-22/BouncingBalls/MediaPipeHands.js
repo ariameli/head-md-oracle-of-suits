@@ -84,7 +84,7 @@ function setupVideo(selfieMode = true) {
 
 function setupHands() {
   hands.setOptions({
-    maxNumHands: 1,
+    maxNumHands: 2,
     modelComplexity: 1,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,
