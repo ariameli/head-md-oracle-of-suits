@@ -1,3 +1,4 @@
+//code courtesy of Patt Vira - https://www.youtube.com/watch?v=o5t7PxRJSXk&t=526s
 "use strict";
 
 let distMouse = 15;
