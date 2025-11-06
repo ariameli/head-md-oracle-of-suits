@@ -1,11 +1,12 @@
 export class Arrow {
   constructor() {
-    this.pos = createVector(width / 2, height - 120);
+    this.pos = createVector(width / 2, height - 60); // near bottom center
     this.vel = createVector(0, 0);
     this.state = "idle"; // 'idle' | 'held' | 'launched' | 'stuck'
-    this.radius = 10;
+    this.radius = 6;
     this.speed = 18;
     this.respawnTimer = 0;
+    this.length = 100; // longer shaft
   }
 
   hold(x, y) {
@@ -15,6 +16,7 @@ export class Arrow {
     this.state = "held";
   }
 
+  // Launch towards (tx,ty) but origin is current this.pos (hand)
   launch(tx, ty) {
     if (this.state !== "held") return;
     const dir = createVector(tx - this.pos.x, ty - this.pos.y);
@@ -38,33 +40,33 @@ export class Arrow {
     const angle =
       this.vel.mag() > 0.1 ? atan2(this.vel.y, this.vel.x) : -PI / 2;
     rotate(angle);
+
+    // shaft (longer)
     noStroke();
     fill(220);
-    // shaft
     rectMode(CENTER);
-    rect(0, 0, this.radius * 2.5, 6);
-    // arrow head
+    rect(-this.length * 0.15, 0, this.length, 6);
+
+    // diamond head (playing-card diamond) at front
     fill(200, 60, 60);
-    triangle(this.radius + 8, 0, this.radius - 2, -6, this.radius - 2, 6);
+    const hx = this.length * 0.5 + 2;
+    beginShape();
+    vertex(hx, 0);
+    vertex(hx - 12, -10);
+    vertex(hx - 24, 0);
+    vertex(hx - 12, 10);
+    endShape(CLOSE);
+
     pop();
   }
 
+  // keep checkHit simple; caller will handle removal/reset
   checkHit(target) {
     if (this.state !== "launched") return false;
     if (dist(this.pos.x, this.pos.y, target.x, target.y) <= target.radius) {
-      // stick to the target center for simplicity
       this.state = "stuck";
       this.vel.set(0, 0);
-      // position the arrow roughly on the hit spot (towards center)
-      //   const dir = createVector(
-      //     this.pos.x - target.x,
-      //     this.pos.y - target.y
-      //   ).normalize();
-      //   this.pos.set(
-      //     target.x + dir.x * (target.radius * 0.2),
-      //     target.y + dir.y * (target.radius * 0.2)
-      //   );
-      this.respawnTimer = 2.0; // seconds before reset
+      this.respawnTimer = 1.0; // short pause then reset
       return true;
     }
     return false;
@@ -72,7 +74,7 @@ export class Arrow {
 
   reset() {
     this.state = "idle";
-    this.pos.set(width / 2, height - 120);
+    this.pos.set(width / 2, height - 60);
     this.vel.set(0, 0);
     this.respawnTimer = 0;
   }

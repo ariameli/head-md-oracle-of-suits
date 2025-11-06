@@ -10,12 +10,55 @@ let detections = null;
 let cam;
 let selfieMode = true;
 let showVideo = false;
-let gesture; // <- new
+let gesture;
 
-// new objects
-let target;
+let targetList = [];
+let spawnTimer = 0;
+const spawnInterval = 3000; // larger spacing between targets
+const TARGET_SPEED = 2.2;
+const MAX_TARGETS = 4;
+
+let targetHits = 0;
+const TARGETS_TO_WIN = 3;
+
+let targetActive = false; // spawn after user holds arrow
 let arrow;
-let score = 0;
+let gameWon = false;
+
+let gameFont = null;
+
+// UI images (PNG files in images/)
+let imgCrossbowTop = null;
+let imgCrossbowWithArrow = null;
+let imgCrossbowEmpty = null;
+let imgArrowThrown = null;
+
+// screens: 'intro' (screen 1), 'playing' (screen 2), 'won'
+let screen = "intro";
+
+function preload() {
+  // load font (try likely paths)
+  const fontCandidates = [
+    "fonts/G2 TGR Regular/G2TGR-Regular.ttf",
+    "fonts/G2 TGR Regular/G2TGR-Regular.otf",
+  ];
+  for (let p of fontCandidates) {
+    try {
+      gameFont = loadFont(
+        p,
+        () => {},
+        () => {}
+      );
+      if (gameFont) break;
+    } catch (e) {}
+  }
+
+  // load PNG UI assets from images/ — use callbacks to avoid silent failures
+  imgCrossbowTop = loadImage("images/crossbow-top-view.png");
+  imgCrossbowWithArrow = loadImage("images/crossbow-with-arrow.png");
+  imgCrossbowEmpty = loadImage("images/crossbow-empty.png");
+  imgArrowThrown = loadImage("images/arrow-thrown.png");
+}
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -42,7 +85,6 @@ function setup() {
 
   hands.onResults(onHandsResults);
 
-  // feed frames from the p5 video element to MediaPipe
   cam = new Camera(videoElement.elt, {
     onFrame: async () => {
       await hands.send({ image: videoElement.elt });
@@ -53,11 +95,8 @@ function setup() {
 
   cam.start();
 
-  // instantiate classifier (ensure gesture.js is loaded before sketch.js)
   gesture = new GestureClassifier();
 
-  // instantiate game objects
-  target = new Target(width / 2, height / 2, min(width, height) * 0.18, 6);
   arrow = new Arrow();
 }
 
@@ -65,63 +104,252 @@ function onHandsResults(results) {
   detections = results;
 }
 
-function draw() {
-  background(30);
+function spawnTarget() {
+  if (targetList.length >= MAX_TARGETS) return;
+  // keep targets on same horizontal line, spaced further apart
+  const r = random(90, 140); // bigger targets
+  const y = height * 0.45; // fixed horizontal line
+  const spacing = width * 0.35; // large spacing to right of screen
+  const xStart = width + r + 20 + targetList.length * spacing;
+  targetList.push(new Target(xStart, y, r, TARGET_SPEED));
+}
 
-  if (showVideo && videoElement && videoElement.loadedmetadata) {
-    image(videoElement, 0, 0, width, height);
-  } else {
-    // faded background when video is off
-    fill(20);
-    rect(0, 0, width, height);
+function draw() {
+  background(0); // black
+
+  // Screen 1: Intro
+  if (screen === "intro") {
+    push();
+    fill(255);
+    if (gameFont) textFont(gameFont);
+    textAlign(LEFT, CENTER);
+    textSize(28);
+    text(
+      "Show a fist to the webcam to hold the crossbow in your hand.",
+      40,
+      height / 2
+    );
+    pop();
+
+    // right: crossbow-top-view image (use PNG if loaded)
+    if (imgCrossbowTop) {
+      imageMode(CENTER);
+      const scale = min(
+        (width * 0.35) / imgCrossbowTop.width,
+        (height * 0.6) / imgCrossbowTop.height
+      );
+      const wImg = imgCrossbowTop.width * scale;
+      const hImg = imgCrossbowTop.height * scale;
+      image(imgCrossbowTop, 0, 0, wImg, hImg);
+    }
+
+    // still listen for hand; if closed and hand detected, transition to playing and hold arrow
+    if (
+      detections &&
+      detections.multiHandLandmarks &&
+      detections.multiHandLandmarks.length > 0
+    ) {
+      const landmarks = detections.multiHandLandmarks[0];
+      const label = gesture.classify(landmarks);
+      if (label === "closed") {
+        // anchor at index tip
+        const anchor = landmarks[8];
+        const ax = anchor.x * width;
+        const ay = anchor.y * height;
+        arrow.hold(ax, ay);
+        targetActive = true;
+        screen = "playing";
+      }
+      // draw hand feedback
+      gesture.drawHands(landmarks);
+      gesture.drawLabel(label, landmarks);
+    }
+
+    return;
   }
 
-  // draw target
-  target.draw();
+  // Screen 2: playing
+  // update/spawn targets
+  for (let i = targetList.length - 1; i >= 0; i--) {
+    const t = targetList[i];
+    t.update();
+    t.draw();
 
-  // update/draw arrow
+    // if target has arrow placed via open-in-target, draw arrow-thrown at its center (PNG)
+    if (t.hasArrow) {
+      if (imgArrowThrown) {
+        push();
+        imageMode(CENTER);
+        const aw = imgArrowThrown.width;
+        const ah = imgArrowThrown.height;
+        const s = ((t.radius * 1.0) / max(aw, ah)) * 2.0;
+        image(imgArrowThrown, t.x, t.y, aw * s, ah * s);
+        pop();
+      } else {
+        // fallback: small diamond marker
+        push();
+        fill(200, 60, 60);
+        noStroke();
+        translate(t.x, t.y);
+        rotate(QUARTER_PI);
+        rectMode(CENTER);
+        rect(0, 0, t.radius * 0.6, t.radius * 0.6);
+        pop();
+      }
+    }
+
+    // remove target only if offscreen
+    if (t.isOffscreen()) {
+      targetList.splice(i, 1);
+    }
+  }
+
+  // draw crossbow at bottom using PNGs if available
+  imageMode(CENTER);
+  if (arrow.state === "held") {
+    if (imgCrossbowWithArrow) {
+      const wImg = min(width * 0.6, imgCrossbowWithArrow.width * 0.6);
+      const hImg =
+        (imgCrossbowWithArrow.height / imgCrossbowWithArrow.width) * wImg;
+      image(
+        imgCrossbowWithArrow,
+        width / 2,
+        height - hImg / 2 - 10,
+        wImg,
+        hImg
+      );
+    }
+  } else {
+    if (imgCrossbowEmpty) {
+      const wImg = min(width * 0.6, imgCrossbowEmpty.width * 0.6);
+      const hImg = (imgCrossbowEmpty.height / imgCrossbowEmpty.width) * wImg;
+      image(imgCrossbowEmpty, width / 2, height - hImg / 2 - 10, wImg, hImg);
+    }
+  }
+
+  // update and draw arrow (if in flight)
   arrow.update();
   arrow.draw();
 
-  // draw landmarks and gesture labels and handle interaction
-  if (detections && detections.multiHandLandmarks) {
-    // use the first detected hand for interaction
+  // draw hand detection and manage interactions
+  let handLabel = null;
+  if (
+    detections &&
+    detections.multiHandLandmarks &&
+    detections.multiHandLandmarks.length > 0
+  ) {
     const landmarks = detections.multiHandLandmarks[0];
-
-    // draw visuals for hands
     gesture.drawHands(landmarks);
-    const label = gesture.classify(landmarks);
-    gesture.drawLabel(label, landmarks);
+    handLabel = gesture.classify(landmarks);
+    gesture.drawLabel(handLabel, landmarks);
 
-    // choose the anchor point to be the middle of the hand of the user
-    const idxTip = landmarks[0];
-    const aimX = idxTip.x * width;
-    const aimY = idxTip.y * height;
+    const anchor = landmarks[8];
+    const ax = anchor.x * width;
+    const ay = anchor.y * height;
 
-    // if closed -> hold/follow the hand (bow manipulation)
-    if (label === "closed") {
-      arrow.hold(aimX, aimY);
+    // hold behavior: fist picks arrow up
+    if (
+      handLabel === "closed" &&
+      (arrow.state === "idle" || arrow.state === "held")
+    ) {
+      arrow.hold(ax, ay);
+      targetActive = true;
+      screen = "playing";
     }
 
-    // if open and arrow was held -> launch toward target
-    if (label === "open" && arrow.state === "held") {
-      arrow.launch(target.x, target.y);
+    // if open while holding: either place arrow instantly into a target (if hand currently over one)
+    if (handLabel === "open" && arrow.state === "held") {
+      let placed = false;
+      for (let t of targetList) {
+        if (dist(ax, ay, t.x, t.y) <= t.radius) {
+          t.hasArrow = true;
+          if (!t.scored) {
+            t.scored = true;
+            targetHits += 1;
+          }
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        // normal launch toward nearest target or center
+        let tx = width / 2;
+        let ty = height / 2;
+        if (targetList.length > 0) {
+          tx = targetList[0].x;
+          ty = targetList[0].y;
+        }
+        arrow.launch(tx, ty);
+      } else {
+        // reset arrow back to idle (crossbow becomes empty)
+        arrow.reset();
+      }
     }
   }
 
-  // check hit after updating arrow position
-  if (arrow.checkHit(target)) {
-    score += 1;
+  // spawn logic
+  if (targetActive && !gameWon) {
+    spawnTimer += deltaTime;
+    if (spawnTimer >= spawnInterval) {
+      spawnTimer = 0;
+      spawnTarget();
+    }
   }
 
-  // HUD
+  // collision checks for launched arrow: mark target.hit but do not remove
+  if (arrow.state === "launched") {
+    for (let t of targetList) {
+      if (t.isHit(arrow.pos.x, arrow.pos.y)) {
+        t.markHit();
+        t.hasArrow = true;
+        if (!t.scored) {
+          t.scored = true;
+          targetHits += 1;
+        }
+        arrow.reset();
+        break;
+      }
+    }
+    // reset if out of bounds
+    if (
+      arrow.pos.x < -50 ||
+      arrow.pos.x > width + 50 ||
+      arrow.pos.y < -50 ||
+      arrow.pos.y > height + 50
+    ) {
+      arrow.reset();
+    }
+  }
+
+  // win condition
+  if (!gameWon && targetHits >= TARGETS_TO_WIN) {
+    gameWon = true;
+  }
+
+  // HUD: score top center, bigger font white
   push();
   fill(255);
-  textSize(20);
-  textAlign(LEFT, TOP);
-  text(`Score: ${score}`, 16, 16);
-  textSize(14);
-  text("Make a fist to hold the arrow, open to shoot.", 16, 42);
+  if (gameFont) textFont(gameFont);
+  textAlign(CENTER, TOP);
+  textSize(36);
+  text(`Hits: ${targetHits}/${TARGETS_TO_WIN}`, width / 2, 8);
+
+  // instruction line under score
+  textSize(18);
+  if (arrow.state === "held") {
+    text("Open hand to release bow / put arrow on target.", width / 2, 54);
+  } else if (!targetActive) {
+    text("Show a fist to catch the crossbow.", width / 2, 54);
+  }
+
+  if (gameWon) {
+    textSize(44);
+    textAlign(CENTER, CENTER);
+    text("You win!", width / 2, height / 2 - 40);
+    textSize(18);
+    text("Restart the page to play again.", width / 2, height / 2 + 16);
+  }
+
   pop();
 }
 
