@@ -106,20 +106,20 @@ function draw() {
     currentCrossbowImage = crossbowWithArrow;
   }
 
-  if (hits >= MAX_HITS) {
-    push();
-    fill(255);
-    textFont(font);
-    textAlign(CENTER, CENTER);
-    textSize(42);
-    text(
-      "Well done!\nYou have hit " + hits + " targets.",
-      windowWidth / 2,
-      windowHeight / 2
-    );
-    pop();
-    return; // stop the draw loop here
-  }
+  // if (hits >= MAX_HITS) {
+  //   push();
+  //   fill(255);
+  //   textFont(font);
+  //   textAlign(CENTER, CENTER);
+  //   textSize(42);
+  //   text(
+  //     "Well done!\nYou have hit " + hits + " targets.",
+  //     windowWidth / 2,
+  //     windowHeight / 2
+  //   );
+  //   pop();
+  //   return; // stop the draw loop here
+  // }
   if (!firstFrame) {
     push();
     fill(255);
@@ -193,9 +193,9 @@ function draw() {
       const landmarks = detections.multiHandLandmarks[i];
 
       // use class methods
-      gesture.drawHands(landmarks);
+      //gesture.drawHands(landmarks);
       const label = gesture.classify(landmarks);
-      gesture.drawLabel(label, landmarks);
+      //gesture.drawLabel(label, landmarks);
 
       if (label === "closed") {
         firstFrame = false;
