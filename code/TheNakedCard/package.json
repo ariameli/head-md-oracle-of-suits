@@ -1,0 +1,17 @@
+{
+  "name": "oracle-of-suits",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "p5": "^1.9.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

@@ -1,47 +1,58 @@
-Project launcher for object-detection → game routing
+Oracle of Suits — launcher and games
 
 Overview
 
-This workspace contains a MediaPipe-based object detector (top-level `sketch.js`) that uses your webcam. When specific objects are detected, the launcher will automatically open the corresponding game page:
+This workspace contains a webcam-based launcher that detects card suits (MediaPipe Tasks) and routes to one of three p5.js games. The modernized code lives under `src/` and is served with Vite; static assets are under `public/`.
 
-- diamond → `crossbow-final/index.html`
-- heart → `crossbow-final/index.html`
-- baton → `carpioche/index.html`
+Structure (key paths)
 
-What I changed
+- src/
+  - launcher/
+    - index.html, main.js — object detection + routing UI
+  - games/
+    - crossbow/ — Crossbow game (p5)
+    - fingerpaint/ — FingerPaint game (p5)
+    - carpioche/ — Card physics game (p5)
+  - config/
+    - routes.js — maps detected labels → game URLs
+    - thresholds.js — stability thresholds (frames/time/score)
+  - lib/mediapipe/
+    - hands.js — shared MediaPipe Hands helper for games
+- public/
+  - images/ … fonts/ … models/ … videos/ … card/ — assets served at root (e.g. `/images/...`, `/models/model.tflite`)
 
-- Enhanced `sketch.js` (top-level) to:
-  - monitor detected labels
-  - debounce/stabilize detection (consecutive frames / time threshold)
-  - show a small overlay with the candidate label and a short countdown
-  - redirect to the appropriate game folder index page when detection is stable
+How to run (recommended)
 
-Files used from game folders
-
-I didn't copy game source files. The launcher redirects the browser to the existing game pages, so the following pages should exist and be self-contained:
-
-- `crossbow-final/index.html` (uses files inside `crossbow-final`)
-- `carpioche/index.html` (uses files inside `carpioche`)
-
-If any of those pages reference shared assets or libraries using absolute paths, you may need to adjust the paths or copy assets into the game folders.
-
-How to run locally (quick)
-
-You should serve the project over a local HTTP server so the browser can load the model and webcam properly.
-
-From the project root (macOS / zsh):
+Use Vite for fast dev with multiple pages.
 
 ```bash
-# using Python 3
-python3 -m http.server 8000
+npm install
+npm run dev
 ```
 
-Then open http://localhost:8000 in your browser. Allow camera access when prompted.
+Then open the “launcher” page from the Vite multi-page index, or navigate directly to:
 
-Notes & next steps
+- Launcher: /src/launcher/index.html
+- Games: /src/games/{crossbow|fingerpaint|carpioche}/index.html
 
-- If you'd rather not navigate away from the launcher page, I can instead load the game's JS into the same p5 canvas (embedding). That requires verifying the game's code (possible namespace collisions) and copying only the required source files.
-- If labels in your model use different names (uppercase or localized), tell me the exact label strings and I will update the mapping.
-- I can make the required stability thresholds adjustable from a small UI control.
+Notes
 
-Contact me which behaviour you prefer (redirect vs embed) and if you want different mapping or stability settings.
+- Asset paths are root-relative and resolved from `public/`. For example:
+  - `/images/...`, `/videos/...`, `/fonts/...`, `/models/model.tflite`, `/card/...`
+- Label → game routing and thresholds live in `src/config/`. Update there instead of editing the game code.
+- Games share a single MediaPipe Hands helper at `src/lib/mediapipe/hands.js`.
+
+Alternative: Live Server
+
+If you prefer Live Server, serve the project root. Root-relative paths (`/images/...`) must exist at the server root. If needed, mirror assets from `public/` to top-level folders (`images/`, `card/`, `fonts/`) or switch to Vite for a simpler setup.
+
+Troubleshooting
+
+- 404 on images/videos/fonts: verify the file exists in `public/` with the same path used by the page (root-relative).
+- Webcam blocked: allow camera access in your browser; use HTTPS where required.
+- Model not loading: check `/models/model.tflite` exists under `public/models/`.
+
+Next steps
+
+- Optional: replace CDN `<script>` tags for p5/mediapipe with module imports for fully bundled builds.
+- Optional: add ESLint + Prettier and a small test harness (e.g., `vitest`) for config utilities.
