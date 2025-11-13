@@ -7,6 +7,8 @@ import {
 
 let detections = null;
 let videoElement;
+let introVideo;
+let endOfGameVideo;
 let drawing = [];
 let prevPointer = { x: null, y: null };
 let stencilImg;
@@ -23,6 +25,15 @@ let stencilX = 0,
 function preload() {
   // Use absolute path to existing asset to avoid relative path issues under dev server
   stencilImg = loadImage("../../../public/images/stencil.png");
+  introVideo = createVideo(["../../../public/videos/heart-intro.mp4"], () => {
+    introVideo.hide();
+  });
+  endOfGameVideo = createVideo(
+    ["../../../public/videos/heart-ending.mp4"],
+    () => {
+      endOfGameVideo.hide();
+    }
+  );
 }
 
 function setup() {
@@ -74,6 +85,14 @@ function windowResized() {
 
 function draw() {
   background(0);
+
+  maskLayer.clear();
+  maskLayer.image(paintLayer, 0, 0);
+  maskLayer.drawingContext.globalCompositeOperation = "destination-in";
+  maskLayer.image(invertedStencilMask, 0, 0);
+  maskLayer.drawingContext.globalCompositeOperation = "source-over";
+  image(maskLayer, 0, 0);
+  image(stencilForMask, 0, 0);
   if (detections?.multiHandLandmarks?.length) {
     for (let hand of detections.multiHandLandmarks) {
       drawIndex(hand);
@@ -86,14 +105,6 @@ function draw() {
     prevPointer.x = null;
     prevPointer.y = null;
   }
-
-  maskLayer.clear();
-  maskLayer.image(paintLayer, 0, 0);
-  maskLayer.drawingContext.globalCompositeOperation = "destination-in";
-  maskLayer.image(invertedStencilMask, 0, 0);
-  maskLayer.drawingContext.globalCompositeOperation = "source-over";
-  image(maskLayer, 0, 0);
-  image(stencilForMask, 0, 0);
 }
 
 function drawIndex(landmarks) {
@@ -104,10 +115,10 @@ function drawIndex(landmarks) {
   fill(0, 255, 255);
   circle(x, y, 20);
   const inside =
-    x >= stencilX + 15 &&
-    x <= stencilX + stencilW - 15 &&
-    y >= stencilY + 15 &&
-    y <= stencilY + stencilH - 15;
+    x >= stencilX + 30 &&
+    x <= stencilX + stencilW - 30 &&
+    y >= stencilY + 30 &&
+    y <= stencilY + stencilH - 30;
   if (!inside) {
     prevPointer.x = null;
     prevPointer.y = null;
@@ -120,7 +131,7 @@ function drawIndex(landmarks) {
   }
   drawing.push([prevPointer.x, prevPointer.y, x, y]);
   paintLayer.push();
-  paintLayer.strokeWeight(30);
+  paintLayer.strokeWeight(50);
   paintLayer.stroke(231, 0, 14);
   paintLayer.line(prevPointer.x, prevPointer.y, x, y);
   paintLayer.pop();

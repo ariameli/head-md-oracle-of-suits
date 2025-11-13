@@ -7,6 +7,8 @@ import {
 
 let detections = null;
 let videoElement;
+let endOfGameVideo;
+let isEndPlaying = false;
 
 let cards = [];
 const NUMBER_OF_CARDS = 40;
@@ -21,7 +23,10 @@ const REPULSION_FORCE = 0.5;
 const HOLD_TIME = 2300;
 const GLOW_COLOR = [255, 215, 0];
 const GLOW_SIZE = 200;
+const CHALLENGE_DURATION = 23000; // 23 secondes
 
+let startTime;
+let font;
 let cardImages = [];
 const cardImageNames = [
   "2bastos.png",
@@ -43,10 +48,18 @@ function preload() {
     cardImages[i] = loadImage(`../../../public/card/${cardImageNames[i]}`);
   }
   card3Image = loadImage(`../../../public/card/${card3ImageName}`);
+  font = loadFont("../../../public/fonts/G2 TGR Medium/G2TGR-Medium.ttf");
+  endOfGameVideo = createVideo(
+    ["../../../public/videos/baton-ending.mp4"],
+    () => {
+      endOfGameVideo.hide();
+    }
+  );
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  startTime = millis(); // Démarrer le chronomètre
   initHands({ maxNumHands: 2, selfieMode: true }, onHandsResults);
   const { videoElement: vid } = setupVideo(true, async (el) => {
     await getHands().send({ image: el });
@@ -67,10 +80,10 @@ function setup() {
     /* non-fatal */
   }
 
-  // Create special card 3
+  // Create special card 3 - POSITION ALÉATOIRE
   cards.push({
-    x: width / 2 - CARD_WIDTH / 2,
-    y: height / 2 - CARD_HEIGHT / 2,
+    x: random(width - CARD_WIDTH),
+    y: random(height - CARD_HEIGHT),
     angle: random(TWO_PI),
     vx: 0,
     vy: 0,
@@ -111,6 +124,16 @@ function windowResized() {
 
 function draw() {
   background(0);
+  // If ending video is playing, render it full-screen and skip game logic
+  if (isEndPlaying && endOfGameVideo) {
+    imageMode(CENTER);
+    const vw = endOfGameVideo.width || endOfGameVideo.elt.videoWidth || width;
+    const vh =
+      endOfGameVideo.height || endOfGameVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(endOfGameVideo, width / 2, height / 2, vw * scale, vh * scale);
+    return;
+  }
   if (detections?.multiHandLandmarks) {
     for (let hand of detections.multiHandLandmarks) {
       drawIndex(hand);
@@ -149,27 +172,76 @@ function draw() {
         } else {
           card3.touchStartTime = 0;
         }
+        // Trigger end-of-game sequence when the special card begins glowing
+        if (card3.isGlowing && !isEndPlaying) {
+          isEndPlaying = true;
+          if (endOfGameVideo) {
+            endOfGameVideo.elt.currentTime = 0;
+            endOfGameVideo.play();
+            endOfGameVideo.elt.onended = () => {
+              try {
+                window.sessionStorage.setItem("skipIntro", "1");
+              } catch (e) {}
+              window.location.href = "/src/launcher/index.html";
+            };
+          } else {
+            // Fallback: redirect immediately if video missing
+            try {
+              window.sessionStorage.setItem("skipIntro", "1");
+            } catch (e) {}
+            window.location.href = "/src/launcher/index.html";
+          }
+        }
       }
     }
   }
   drawCards();
+  drawChallengeText();
+}
+function drawChallengeText() {
+  const elapsed = millis() - startTime;
+  const remaining = CHALLENGE_DURATION - elapsed;
+
+  if (remaining > 0) {
+    const seconds = Math.ceil(remaining / 1000);
+
+    // Fond semi-transparent noir
+    push();
+    noStroke();
+    fill(0, 0, 0, 140); // Noir avec 70% d'opacité
+    rectMode(CENTER);
+    rect(width / 2, 55, width, 160, 20); // Rectangle arrondi couvrant les deux lignes
+    pop();
+
+    // Texte
+    textAlign(CENTER, CENTER);
+    textFont(font);
+    textSize(42);
+    fill(255);
+    text("Retrouve le 3 de bâtons", width / 2, 40);
+    text(
+      "\nBouge tes mains, et une fois trouvée, pointe la carte du doigt",
+      width / 2,
+      70
+    );
+  }
 }
 
 function drawIndex(l) {
   const m = l[FINGER_TIPS.index];
   noStroke();
-  fill(255);
+  fill(62, 119, 74);
   circle(m.x * width, m.y * height, 10);
 }
 function drawThumb(l) {
   const m = l[FINGER_TIPS.thumb];
   noStroke();
-  fill(255);
+  fill(62, 119, 74);
   circle(m.x * width, m.y * height, 5);
 }
 function drawTips(l) {
   noStroke();
-  fill(255);
+  fill(62, 119, 74);
   for (const i of [4, 8, 12, 16, 20]) {
     const m = l[i];
     circle(m.x * width, m.y * height, 0);
@@ -177,14 +249,14 @@ function drawTips(l) {
 }
 function drawLandmarks(l) {
   noStroke();
-  fill(255);
+  fill(62, 119, 74);
   for (const m of l) {
     circle(m.x * width, m.y * height, 0);
   }
 }
 function drawConnections(l) {
-  stroke(255);
-  strokeWeight(6);
+  stroke(62, 119, 74);
+  strokeWeight(14);
   for (const [aI, bI] of HAND_CONNECTIONS) {
     const a = l[aI],
       b = l[bI];
