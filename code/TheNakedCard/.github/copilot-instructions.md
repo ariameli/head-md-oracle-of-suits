@@ -1,0 +1,22 @@
+# Oracle of Suits — AI Contributor Notes
+
+- Prioritize the modernized Vite workspace under `src/`; legacy static assets live in `public/` and must remain root-relative when referenced.
+- Install deps with `npm install`, then use `npm run dev` for the multi-page preview; Vite opens `src/launcher/index.html` by default (see `vite.config.js`).
+- `npm run build` creates discrete bundles for launcher and each game defined in the Rollup `input` map; add new pages here when introducing games.
+- The launcher (`src/launcher/main.js`) loads `@mediapipe/tasks-vision` from JSDelivr and the local detector model at `/models/model.tflite`; keep `public/models/` in sync when swapping models.
+- Suit detection stability is governed by `REQUIRED_CONSECUTIVE_FRAMES`, `REQUIRED_STABLE_MS`, and `MIN_SCORE_TO_CONSIDER` in `src/config/thresholds.js`; update thresholds instead of editing the detection loop directly.
+- Routing from labels to games is centralized in `src/config/routes.js`; ensure new labels map to Vite-served HTML paths (e.g. `/src/games/<name>/index.html`).
+- Launcher UI is pure p5; state transitions (`start` → `intro` → `box` → `scan`) gate expensive calls like `objectDetector.detectForVideo`. Preserve these guards when adding UI states to avoid reprocessing frames.
+- Games share MediaPipe glue in `src/lib/mediapipe/hands.js`; call `initHands(...)` and `setupVideo(...)` exactly once per sketch to reuse the singleton `window.hands` instance.
+- Each game `index.html` includes CDN globals for `p5`, `@mediapipe/camera_utils`, and `@mediapipe/hands`; maintain those `<script>` tags or replace them with equivalent module imports before removing the globals.
+- p5 sketches export lifecycle hooks by assigning to `window.preload/setup/draw`; keep this pattern when refactoring or splitting files so p5 can discover the callbacks while Vite still treats files as ES modules.
+- `setupVideo` expects the `Camera` global injected by the CDN script; if you bundle dependencies, shim `Camera` or update `setupVideo` accordingly.
+- Landmark processing in `src/games/crossbow/main.js`, `src/games/fingerpaint/main.js`, and `src/games/carpioche/main.js` works with normalized coordinates; scale using `width/height`, not raw video dimensions, to keep gestures consistent.
+- Asset loads inside games use long relative paths into `public/`; verifying paths against `public/images`, `public/videos`, and `public/card` prevents 404s at runtime.
+- When adapting art/fonts, keep font files under `public/fonts/` and load with exact folder casing (e.g. `G2 TGR Medium`), otherwise p5 fails silently.
+- If you add intro cinematics, follow the launcher pattern: preload via `createVideo`, call `.hide()`, and re-enable the webcam with `setCameraEnabled(true)` once playback ends.
+- Avoid tearing down video streams; toggle tracks through `setCameraEnabled` to prevent browser permission prompts from reappearing.
+- For gesture tweaks, `src/games/crossbow/Gesture.js` exposes thresholds (`EXTENDED`, `FOLDED`); adjust via constructor options instead of hardcoding new magic numbers.
+- Card physics in `src/games/carpioche/main.js` assumes `NUMBER_OF_CARDS` and constants near the top; update there for balance while keeping repulsion logic in `applyRepulsion()` intact.
+- Use browser devtools for logging—Node-based tests are absent—so prefer lightweight debug helpers or temporary `console.log` statements removed before commit.
+- Before shipping, open each page directly (`/src/games/.../index.html`) to confirm CDN resources and root-relative assets resolve correctly under Vite preview.

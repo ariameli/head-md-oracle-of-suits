@@ -15,9 +15,17 @@ let detections = null;
 let selfieMode = true;
 let showVideo = true;
 let isProcessing = false;
-let appState = "start"; // 'start' | 'intro' | 'scan'
+let appState = "start"; // 'start' | 'intro' | 'box' | 'scan'
 let startImage;
 let introVideo = null;
+let boxOpenedVideo;
+let eyeOpenVideo;
+let eyeVideoActive = false;
+let eyeOpenAudio;
+
+let boxImage;
+let font;
+
 let candidateLabel = null;
 let candidateScore = 0;
 let candidateFrames = 0;
@@ -29,8 +37,17 @@ let scanSpeed = 4;
 let scanHeight = 120;
 let scanStep = 6;
 let scanBuffer = null;
+let scanBufferWidth = 0;
 
-function preload() {}
+function preload() {
+  boxImage = loadImage("../../public/images/box-open.png");
+  font = loadFont("../../public/fonts/G2 TGR Medium/G2TGR-Medium.ttf");
+  boxOpenedVideo = createVideo(["../../public/videos/box-opened.mp4"]);
+  boxOpenedVideo.hide();
+  eyeOpenVideo = createVideo(["../../public/videos/eye-open-close.mp4"]);
+  eyeOpenVideo.hide();
+  eyeOpenAudio = loadSound("../../public/audio/son-scan.mp3");
+}
 
 async function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -86,26 +103,46 @@ function keyPressed() {
     appState === "intro" &&
     introVideo?.elt?.ended
   ) {
-    appState = "scan";
-    setCameraEnabled(true); // re-enable webcam when scanning resumes
+    // Go to box opening screen instead of scanning directly
+    appState = "box";
+    setCameraEnabled(false);
     candidateLabel = null;
     candidateFrames = 0;
     candidateStart = 0;
+    if (boxOpenedVideo) {
+      boxOpenedVideo.elt.currentTime = 0;
+      boxOpenedVideo.elt.onended = () => {
+        appState = "scan";
+        setCameraEnabled(true);
+      };
+      boxOpenedVideo.play();
+    } else {
+      appState = "scan";
+      setCameraEnabled(true);
+    }
   }
 }
 
 function draw() {
   background(0);
   if (appState === "start") {
+    renderEyeVideo(false);
     drawStartScreen();
     return;
   }
   if (appState === "intro") {
+    renderEyeVideo(false);
     drawIntro();
+    return;
+  }
+  if (appState === "box") {
+    renderEyeVideo(false);
+    drawBoxOpening();
     return;
   }
   // From here on, we're in 'scan' state
   const noDetections = !detections?.detections?.length;
+  renderEyeVideo(noDetections);
   if (!candidateLabel && noDetections) {
     drawScanningOverlay();
   }
@@ -176,14 +213,15 @@ async function processVideo() {
 }
 
 function buildScanBuffer() {
-  scanBuffer = createGraphics(windowWidth, scanHeight);
+  scanBufferWidth = width;
+  scanBuffer = createGraphics(scanBufferWidth, scanHeight);
   const g = scanBuffer;
   g.noStroke();
   for (let off = 0; off <= scanHeight; off += scanStep) {
     const distFromCenter = Math.abs(off - scanHeight / 2);
     const alpha = map(distFromCenter, 0, scanHeight / 2, 160, 0);
     g.fill(40, 220, 160, alpha * 0.9);
-    g.rect(0, off, windowWidth, scanStep + 1);
+    g.rect(0, off, scanBufferWidth, scanStep + 1);
   }
 }
 
@@ -220,12 +258,15 @@ function drawIntro() {
     image(introVideo, width / 2, height / 2, vw * scale, vh * scale);
   } else {
     fill(255);
-    textAlign(CENTER, CENTER);
-    textSize(18);
+    textAlign(LEFT, CENTER);
+    imageMode(CENTER);
+    image(boxImage, windowWidth - 300, windowHeight / 2 - 50, 1200, 1200);
+    textFont(font);
+    textSize(40);
     text(
-      "Intro finished — press B to continue to scanning",
-      width / 2,
-      height / 2
+      "Ouvre la boîte devant toi\npour aider la Carte.",
+      200,
+      windowHeight / 2
     );
   }
 }
@@ -235,11 +276,14 @@ function drawScanningOverlay() {
   if (scanY > height) scanY = -scanHeight;
   noStroke();
   fill(0, 24);
-  rect(0, 0, windowWidth, windowHeight);
+  rect(0, 0, width, height);
   if (scanBuffer) {
-    image(scanBuffer, 0, scanY, windowWidth, scanHeight);
+    push();
+    imageMode(CORNER);
+    image(scanBuffer, 0, scanY, width, scanHeight);
+    pop();
     fill(120, 255, 200, 220);
-    rect(0, scanY + scanHeight / 2, windowWidth, 2);
+    rect(0, scanY + scanHeight / 2, width, 2);
   }
 }
 
@@ -289,6 +333,46 @@ function drawCountdown() {
     width / 2,
     height - 36
   );
+}
+
+function drawBoxOpening() {
+  if (boxOpenedVideo && !boxOpenedVideo.elt.ended) {
+    imageMode(CENTER);
+    const vw = boxOpenedVideo.width || boxOpenedVideo.elt.videoWidth || width;
+    const vh =
+      boxOpenedVideo.height || boxOpenedVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(boxOpenedVideo, width / 2, height / 2, vw * scale, vh * scale);
+  } else {
+    // Safety fallback if ended or missing
+    if (appState === "box") {
+      appState = "scan";
+      setCameraEnabled(true);
+    }
+  }
+}
+
+function renderEyeVideo(shouldPlay) {
+  if (!eyeOpenVideo) return;
+  if (shouldPlay) {
+    if (!eyeVideoActive) {
+      eyeOpenVideo.loop();
+      eyeOpenAudio.loop();
+      eyeVideoActive = true;
+    }
+    push();
+    imageMode(CENTER);
+    const vw = eyeOpenVideo.width || eyeOpenVideo.elt.videoWidth || width;
+    const vh = eyeOpenVideo.height || eyeOpenVideo.elt.videoHeight || height;
+    const scale = Math.max(width / vw, height / vh);
+    image(eyeOpenVideo, width / 2, height / 2, vw * scale, vh * scale);
+    pop();
+  } else if (eyeVideoActive) {
+    eyeOpenVideo.pause();
+    eyeOpenAudio.pause();
+    eyeOpenVideo.elt.currentTime = 0;
+    eyeVideoActive = false;
+  }
 }
 
 window.preload = preload;
