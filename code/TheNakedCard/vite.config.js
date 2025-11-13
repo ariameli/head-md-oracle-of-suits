@@ -9,6 +9,7 @@ export default defineConfig({
         crossbow: "src/games/crossbow/index.html",
         carpioche: "src/games/carpioche/index.html",
         fingerpaint: "src/games/fingerpaint/index.html",
+        coin: "src/games/coin/index.html",
       },
     },
   },

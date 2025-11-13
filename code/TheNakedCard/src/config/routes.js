@@ -2,6 +2,7 @@ export const LABEL_TO_GAME = {
   diamond: "/src/games/crossbow/index.html",
   heart: "/src/games/fingerpaint/index.html",
   baton: "/src/games/carpioche/index.html",
+  coin: "/src/games/coin/index.html",
 };
 
 export function getRouteForLabel(label) {
