@@ -21,6 +21,30 @@ let stencilX = 0,
   stencilY = 0,
   stencilW = 0,
   stencilH = 0;
+let isIntroPlaying = true;
+let isEndPlaying = false;
+const STENCIL_MARGIN = 30; // keep in sync with paint bounds
+const SAMPLE_STEP = 4; // finer sampling grid for better coverage accuracy
+let COVERAGE_THRESHOLD = 0.75; // more forgiving by default; override via window.FP_COVERAGE_THRESHOLD
+let sampleCoords = [];
+let sampleTotal = 0;
+let lastCoverageCheck = 0;
+let coverageRatio = 0;
+const DEBUG_COVERAGE = false; // set true or toggle window.FP_DEBUG_COVERAGE = true in console
+const isDebug = () => {
+  try {
+    return DEBUG_COVERAGE || window.FP_DEBUG_COVERAGE === true;
+  } catch (e) {
+    return DEBUG_COVERAGE;
+  }
+};
+const getThreshold = () => {
+  try {
+    const v = Number(window.FP_COVERAGE_THRESHOLD);
+    if (!Number.isNaN(v) && v > 0 && v <= 1) return v;
+  } catch (e) {}
+  return COVERAGE_THRESHOLD;
+};
 
 function preload() {
   // Use absolute path to existing asset to avoid relative path issues under dev server
@@ -48,7 +72,21 @@ function setup() {
   maskLayer = createGraphics(windowWidth, windowHeight);
   maskLayer.pixelDensity(1);
   stencilForMask = createGraphics(width, height);
+  // Critical: ensure consistent pixel density so pixel sampling aligns with coordinates
+  stencilForMask.pixelDensity(1);
   layoutStencil();
+  if (introVideo) {
+    introVideo.elt.currentTime = 0;
+    introVideo.play();
+    introVideo.elt.onended = () => {
+      isIntroPlaying = false;
+      introVideo.pause();
+      introVideo.elt.currentTime = 0;
+      introVideo.hide();
+    };
+  } else {
+    isIntroPlaying = false;
+  }
 }
 
 function layoutStencil() {
@@ -73,6 +111,39 @@ function layoutStencil() {
     invertedStencilMask.pixels[i + 3] = 255 - invertedStencilMask.pixels[i + 3];
   }
   invertedStencilMask.updatePixels();
+  // Precompute sample coordinates within the target (transparent) region
+  // Build sample positions by reading alpha with get(x,y) to avoid pixel-density pitfalls
+  sampleCoords = [];
+  sampleTotal = 0;
+  const x0 = Math.max(0, Math.floor(stencilX + STENCIL_MARGIN));
+  const y0 = Math.max(0, Math.floor(stencilY + STENCIL_MARGIN));
+  const x1 = Math.min(width, Math.ceil(stencilX + stencilW - STENCIL_MARGIN));
+  const y1 = Math.min(height, Math.ceil(stencilY + stencilH - STENCIL_MARGIN));
+  for (let y = y0; y < y1; y += SAMPLE_STEP) {
+    for (let x = x0; x < x1; x += SAMPLE_STEP) {
+      const a = invertedStencilMask.get(x, y)[3] || 0; // alpha after inversion
+      if (a > 128) {
+        sampleCoords.push([x, y]);
+      }
+    }
+  }
+  sampleTotal = sampleCoords.length;
+  // Fallback: if nothing found (mask alpha unexpected), try using original mask with opposite predicate
+  if (sampleTotal === 0) {
+    for (let y = y0; y < y1; y += SAMPLE_STEP) {
+      for (let x = x0; x < x1; x += SAMPLE_STEP) {
+        const a0 = stencilForMask.get(x, y)[3] || 0; // original alpha
+        if (a0 < 128) {
+          sampleCoords.push([x, y]);
+        }
+      }
+    }
+    sampleTotal = sampleCoords.length;
+  }
+  console.info(
+    "[fingerpaint] sample points inside paintable region:",
+    sampleTotal
+  );
 }
 
 function windowResized() {
@@ -86,6 +157,33 @@ function windowResized() {
 function draw() {
   background(0);
 
+  // Intro video overlay and early return while playing
+  if (isIntroPlaying && introVideo) {
+    push();
+    imageMode(CENTER);
+    const vw = introVideo.width || introVideo.elt.videoWidth || width;
+    const vh = introVideo.height || introVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(introVideo, width / 2, height / 2, vw * scale, vh * scale);
+    pop();
+    return;
+  }
+
+  // If ending video is playing, render it full-screen and skip game draws
+  if (isEndPlaying && endOfGameVideo) {
+    push();
+    imageMode(CENTER);
+    const vw = endOfGameVideo.width || endOfGameVideo.elt.videoWidth || width;
+    const vh =
+      endOfGameVideo.height || endOfGameVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(endOfGameVideo, width / 2, height / 2, vw * scale, vh * scale);
+    pop();
+    return;
+  }
+
+  // Ensure we draw gameplay layers with top-left origin
+  imageMode(CORNER);
   maskLayer.clear();
   maskLayer.image(paintLayer, 0, 0);
   maskLayer.drawingContext.globalCompositeOperation = "destination-in";
@@ -105,6 +203,59 @@ function draw() {
     prevPointer.x = null;
     prevPointer.y = null;
   }
+
+  // Periodically check coverage; if complete, trigger ending and redirect
+  if (
+    !isEndPlaying &&
+    frameCount - lastCoverageCheck >= 15 &&
+    sampleTotal > 0
+  ) {
+    let colored = 0;
+    for (let i = 0; i < sampleCoords.length; i++) {
+      const [sx, sy] = sampleCoords[i];
+      const c = maskLayer.get(sx, sy); // [r,g,b,a]
+      if (c[3] > 10) colored++;
+    }
+    coverageRatio = colored / sampleTotal;
+    lastCoverageCheck = frameCount;
+    if (frameCount % 60 === 0) {
+      console.log(
+        `[fingerpaint] coverage: ${(coverageRatio * 100).toFixed(
+          1
+        )}% (${colored}/${sampleTotal})`
+      );
+    } else if (
+      !isDebug() &&
+      coverageRatio >= 0.8 &&
+      coverageRatio < getThreshold()
+    ) {
+      // one-time nudge log when user is close to completion
+      if (!window.__fpLogged80) {
+        window.__fpLogged80 = true;
+        console.info(
+          `[fingerpaint] nearly complete: ${(coverageRatio * 100).toFixed(0)}%`
+        );
+      }
+    }
+    if (coverageRatio >= getThreshold()) {
+      isEndPlaying = true;
+      if (endOfGameVideo) {
+        endOfGameVideo.elt.currentTime = 0;
+        endOfGameVideo.play();
+        endOfGameVideo.elt.onended = () => {
+          try {
+            window.sessionStorage.setItem("skipIntro", "1");
+          } catch (e) {}
+          window.location.href = "/src/launcher/index.html";
+        };
+      } else {
+        try {
+          window.sessionStorage.setItem("skipIntro", "1");
+        } catch (e) {}
+        window.location.href = "/src/launcher/index.html";
+      }
+    }
+  }
 }
 
 function drawIndex(landmarks) {
@@ -115,10 +266,10 @@ function drawIndex(landmarks) {
   fill(0, 255, 255);
   circle(x, y, 20);
   const inside =
-    x >= stencilX + 30 &&
-    x <= stencilX + stencilW - 30 &&
-    y >= stencilY + 30 &&
-    y <= stencilY + stencilH - 30;
+    x >= stencilX + STENCIL_MARGIN &&
+    x <= stencilX + stencilW - STENCIL_MARGIN &&
+    y >= stencilY + STENCIL_MARGIN &&
+    y <= stencilY + stencilH - STENCIL_MARGIN;
   if (!inside) {
     prevPointer.x = null;
     prevPointer.y = null;
