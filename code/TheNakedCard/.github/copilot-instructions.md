@@ -1,7 +1,6 @@
 # Oracle of Suits — AI Contributor Notes
 
 - Prioritize the modernized Vite workspace under `src/`; legacy static assets live in `public/` and must remain root-relative when referenced.
-- Install deps with `npm install`, then use `npm run dev` for the multi-page preview; Vite opens `src/launcher/index.html` by default (see `vite.config.js`).
 - `npm run build` creates discrete bundles for launcher and each game defined in the Rollup `input` map; add new pages here when introducing games.
 - The launcher (`src/launcher/main.js`) loads `@mediapipe/tasks-vision` from JSDelivr and the local detector model at `/models/model.tflite`; keep `public/models/` in sync when swapping models.
 - Suit detection stability is governed by `REQUIRED_CONSECUTIVE_FRAMES`, `REQUIRED_STABLE_MS`, and `MIN_SCORE_TO_CONSIDER` in `src/config/thresholds.js`; update thresholds instead of editing the detection loop directly.

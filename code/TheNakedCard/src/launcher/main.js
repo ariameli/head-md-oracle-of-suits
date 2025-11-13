@@ -13,7 +13,6 @@ let videoElement;
 let objectDetector;
 let detections = null;
 let selfieMode = true;
-let showVideo = true;
 let isProcessing = false;
 let appState = "start"; // 'start' | 'intro' | 'box' | 'scan'
 let startImage;
@@ -22,22 +21,24 @@ let boxOpenedVideo;
 let eyeOpenVideo;
 let eyeVideoActive = false;
 let eyeOpenAudio;
+let symbolImages = {};
 
 let boxImage;
 let font;
 
 let candidateLabel = null;
-let candidateScore = 0;
 let candidateFrames = 0;
 let candidateStart = 0;
 let isRedirecting = false;
+const REDIRECT_DELAY_MS = 3000;
+let redirectStart = 0;
+let redirectTimeoutId = null;
 
 let scanY = 0;
 let scanSpeed = 4;
 let scanHeight = 120;
 let scanStep = 6;
 let scanBuffer = null;
-let scanBufferWidth = 0;
 
 function preload() {
   boxImage = loadImage("../../public/images/box-open.png");
@@ -47,17 +48,31 @@ function preload() {
   eyeOpenVideo = createVideo(["../../public/videos/eye-open-close.mp4"]);
   eyeOpenVideo.hide();
   eyeOpenAudio = loadSound("../../public/audio/son-scan.mp3");
+  for (const label of Object.keys(LABEL_TO_GAME)) {
+    const name = String(label).toLowerCase();
+    symbolImages[name] = loadImage(`../../public/images/symbols/${name}.png`);
+  }
 }
 
 async function setup() {
   createCanvas(windowWidth, windowHeight);
   startImage = await loadImage("../../public/images/card-idle.jpeg");
   buildScanBuffer();
+  // Check if we should skip the whole intro/start flow and jump directly to scanning.
+  const skipIntro = (() => {
+    try {
+      return window.sessionStorage.getItem("skipIntro") === "1";
+    } catch (e) {
+      return false;
+    }
+  })();
   try {
-    introVideo = createVideo([
-      "../../public/videos/card-screaming-spotlight.mp4",
-    ]);
-    introVideo.hide();
+    if (!skipIntro) {
+      introVideo = createVideo([
+        "../../public/videos/card-screaming-spotlight.mp4",
+      ]);
+      introVideo.hide();
+    }
   } catch (e) {
     console.warn("Could not load intro video:", e);
     introVideo = null;
@@ -77,6 +92,14 @@ async function setup() {
     scoreThreshold: 0.5,
     maxResults: 5,
   });
+  if (skipIntro) {
+    // Force state to scan and enable camera usage immediately.
+    appState = "scan";
+    setCameraEnabled(true);
+    try {
+      window.sessionStorage.removeItem("skipIntro");
+    } catch (e) {}
+  }
   processVideo();
 }
 
@@ -86,7 +109,6 @@ function windowResized() {
 }
 
 function keyPressed() {
-  if (key === "v" || key === "V") showVideo = !showVideo;
   if ((key === "s" || key === "S") && appState === "start") {
     if (introVideo) {
       appState = "intro";
@@ -97,6 +119,7 @@ function keyPressed() {
       appState = "scan";
       setCameraEnabled(true);
     }
+    //appState = "scan";
   }
   if (
     (key === "b" || key === "B") &&
@@ -143,13 +166,11 @@ function draw() {
   // From here on, we're in 'scan' state
   const noDetections = !detections?.detections?.length;
   renderEyeVideo(noDetections);
-  if (!candidateLabel && noDetections) {
-    drawScanningOverlay();
-  }
-  if (detections?.detections) {
+  if (appState === "scan" && detections?.detections) {
     drawDetectionsOverlay();
   }
-  if (candidateLabel && !isRedirecting) {
+  drawScanningOverlay();
+  if (candidateLabel) {
     drawCountdown();
   }
 }
@@ -188,41 +209,67 @@ async function processVideo() {
       if (candidateLabel === best.name) {
         candidateFrames++;
       } else {
+        resetRedirectTimer();
         candidateLabel = best.name;
-        candidateScore = best.score;
         candidateFrames = 1;
         candidateStart = Date.now();
       }
       const stableByFrames = candidateFrames >= REQUIRED_CONSECUTIVE_FRAMES;
       const stableByTime = Date.now() - candidateStart >= REQUIRED_STABLE_MS;
       if (!isRedirecting && (stableByFrames || stableByTime)) {
+        const target = LABEL_TO_GAME[candidateLabel];
+        if (!target) {
+          resetRedirectTimer();
+          clearCandidateState();
+          requestAnimationFrame(processVideo);
+          return;
+        }
         isRedirecting = true;
-        setTimeout(() => {
-          window.location.href = LABEL_TO_GAME[candidateLabel];
-        }, 450);
+        redirectStart = Date.now();
+        redirectTimeoutId = setTimeout(() => {
+          window.location.href = target;
+        }, REDIRECT_DELAY_MS);
       }
     } else {
-      candidateLabel = null;
-      candidateFrames = 0;
+      if (!isRedirecting) {
+        resetRedirectTimer();
+        clearCandidateState();
+      }
     }
   } else {
-    candidateLabel = null;
-    candidateFrames = 0;
+    if (!isRedirecting) {
+      resetRedirectTimer();
+      clearCandidateState();
+    }
   }
   requestAnimationFrame(processVideo);
 }
 
 function buildScanBuffer() {
-  scanBufferWidth = width;
-  scanBuffer = createGraphics(scanBufferWidth, scanHeight);
+  scanBuffer = createGraphics(width, scanHeight);
   const g = scanBuffer;
   g.noStroke();
   for (let off = 0; off <= scanHeight; off += scanStep) {
     const distFromCenter = Math.abs(off - scanHeight / 2);
     const alpha = map(distFromCenter, 0, scanHeight / 2, 160, 0);
     g.fill(40, 220, 160, alpha * 0.9);
-    g.rect(0, off, scanBufferWidth, scanStep + 1);
+    g.rect(0, off, width, scanStep + 1);
   }
+}
+
+function resetRedirectTimer() {
+  if (redirectTimeoutId) {
+    clearTimeout(redirectTimeoutId);
+    redirectTimeoutId = null;
+  }
+  redirectStart = 0;
+  isRedirecting = false;
+}
+
+function clearCandidateState() {
+  candidateLabel = null;
+  candidateFrames = 0;
+  candidateStart = 0;
 }
 
 // Enable/disable camera tracks without fully tearing down the stream
@@ -272,6 +319,7 @@ function drawIntro() {
 }
 
 function drawScanningOverlay() {
+  if (appState !== "scan") return;
   scanY += scanSpeed;
   if (scanY > height) scanY = -scanHeight;
   noStroke();
@@ -288,9 +336,7 @@ function drawScanningOverlay() {
 }
 
 function drawDetectionsOverlay() {
-  strokeWeight(2);
-  textSize(16);
-  textAlign(LEFT, TOP);
+  if (appState !== "scan") return;
   for (const detection of detections.detections) {
     const bbox = detection.boundingBox;
     const category = detection.categories[0];
@@ -299,26 +345,36 @@ function drawDetectionsOverlay() {
     let w = bbox.width;
     let h = bbox.height;
     if (selfieMode) x = width - x - w;
-    stroke(0, 255, 0);
-    strokeWeight(3);
-    noFill();
-    rect(x, y, w, h);
-    const label = `${category.categoryName} (${(category.score * 100).toFixed(
-      0
-    )}%)`;
-    const textW = textWidth(label);
-    const padding = 4;
-    fill(0, 255, 0);
-    noStroke();
-    rect(x, y - 24, textW + padding * 2, 24);
-    fill(0);
-    text(label, x + padding, y - 20);
+    const label = String(category?.categoryName || "").toLowerCase();
+    const img = symbolImages[label];
+    if (img && img.width > 0) {
+      push();
+      imageMode(CENTER);
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      const maxSide = Math.max(w, h) * 1.1;
+      const scale = maxSide / Math.max(img.width, img.height);
+      const drawW = img.width * scale;
+      const drawH = img.height * scale;
+      image(img, cx, cy, drawW, drawH);
+      pop();
+    }
   }
 }
 
 function drawCountdown() {
-  const elapsed = Date.now() - candidateStart;
-  const progress = Math.min(1, Math.max(0, elapsed / REQUIRED_STABLE_MS));
+  const now = Date.now();
+  const hasRedirectTimer = isRedirecting && redirectStart;
+  const stabilityElapsed = candidateStart ? now - candidateStart : 0;
+  const stabilityRemainingMs = Math.max(
+    0,
+    REQUIRED_STABLE_MS - stabilityElapsed
+  );
+  const redirectElapsed = redirectStart ? now - redirectStart : 0;
+  const redirectRemainingMs = hasRedirectTimer
+    ? Math.max(0, REDIRECT_DELAY_MS - redirectElapsed)
+    : REDIRECT_DELAY_MS;
+
   rectMode(CENTER);
   noStroke();
   fill(0, 160);
@@ -326,13 +382,18 @@ function drawCountdown() {
   fill(255);
   textAlign(CENTER, CENTER);
   textSize(16);
-  text(
-    `${candidateLabel} detected — launching in ${Math.ceil(
-      (1 - progress) * 1
-    )}s`,
-    width / 2,
-    height - 36
-  );
+  textFont(font);
+  const displayLabel = candidateLabel ? candidateLabel.toUpperCase() : "";
+  const message = hasRedirectTimer
+    ? `${displayLabel} detected — launching in ${Math.max(
+        0,
+        Math.ceil(redirectRemainingMs / 1000)
+      )}s`
+    : `${displayLabel} detected — hold steady ${Math.max(
+        0,
+        Math.ceil(stabilityRemainingMs / 1000)
+      )}s`;
+  text(message, width / 2, height - 36);
 }
 
 function drawBoxOpening() {
@@ -369,7 +430,9 @@ function renderEyeVideo(shouldPlay) {
     pop();
   } else if (eyeVideoActive) {
     eyeOpenVideo.pause();
-    eyeOpenAudio.pause();
+    if (eyeOpenAudio) {
+      eyeOpenAudio.stop();
+    }
     eyeOpenVideo.elt.currentTime = 0;
     eyeVideoActive = false;
   }

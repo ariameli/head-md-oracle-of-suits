@@ -1,3 +1,3 @@
 export const REQUIRED_CONSECUTIVE_FRAMES = 6;
-export const REQUIRED_STABLE_MS = 1200;
+export const REQUIRED_STABLE_MS = 3000;
 export const MIN_SCORE_TO_CONSIDER = 0.5;
