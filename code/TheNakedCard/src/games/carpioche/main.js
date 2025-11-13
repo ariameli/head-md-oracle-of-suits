@@ -8,7 +8,9 @@ import {
 let detections = null;
 let videoElement;
 let endOfGameVideo;
+let introVideo;
 let isEndPlaying = false;
+let isIntroPlaying = true; // gate gameplay & timer until intro finishes
 
 let cards = [];
 const NUMBER_OF_CARDS = 40;
@@ -20,7 +22,7 @@ const MOVEMENT_STRENGTH = 0.5;
 const ROTATION_STRENGTH = 0.02;
 const REPULSION_DISTANCE = 20;
 const REPULSION_FORCE = 0.5;
-const HOLD_TIME = 2300;
+const HOLD_TIME = 2000;
 const GLOW_COLOR = [255, 215, 0];
 const GLOW_SIZE = 200;
 const CHALLENGE_DURATION = 23000; // 23 secondes
@@ -55,11 +57,13 @@ function preload() {
       endOfGameVideo.hide();
     }
   );
+  introVideo = createVideo(["../../../public/videos/baton-intro.mp4"], () => {
+    introVideo.hide();
+  });
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  startTime = millis(); // Démarrer le chronomètre
   initHands({ maxNumHands: 2, selfieMode: true }, onHandsResults);
   const { videoElement: vid } = setupVideo(true, async (el) => {
     await getHands().send({ image: el });
@@ -78,6 +82,25 @@ function setup() {
     }
   } catch (e) {
     /* non-fatal */
+  }
+
+  // Play intro video before starting the challenge timer
+  if (introVideo) {
+    introVideo.elt.currentTime = 0;
+    introVideo.play();
+    introVideo.elt.onended = () => {
+      isIntroPlaying = false;
+      try {
+        introVideo.pause();
+        introVideo.elt.currentTime = 0;
+        introVideo.hide();
+      } catch (e) {}
+      // Start timer AFTER intro finishes
+      startTime = millis();
+    };
+  } else {
+    isIntroPlaying = false;
+    startTime = millis();
   }
 
   // Create special card 3 - POSITION ALÉATOIRE
@@ -124,7 +147,18 @@ function windowResized() {
 
 function draw() {
   background(0);
-  // If ending video is playing, render it full-screen and skip game logic
+
+  // Intro gating: show intro video until finished
+  if (isIntroPlaying && introVideo) {
+    imageMode(CENTER);
+    const vw = introVideo.width || introVideo.elt.videoWidth || width;
+    const vh = introVideo.height || introVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(introVideo, width / 2, height / 2, vw * scale, vh * scale);
+    return;
+  }
+
+  // Ending video gating
   if (isEndPlaying && endOfGameVideo) {
     imageMode(CENTER);
     const vw = endOfGameVideo.width || endOfGameVideo.elt.videoWidth || width;

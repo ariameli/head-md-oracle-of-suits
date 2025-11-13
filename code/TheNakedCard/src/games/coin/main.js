@@ -44,17 +44,30 @@ let targetAttempt = null;
 // Confetti system
 let confetti = [];
 
-// Tutorial flag
-let showTutorial = true;
+// Tutorial flag: starts only AFTER intro video finishes
+let showTutorial = false;
 
 // MediaPipe detections
 let detections = null;
 let videoElement;
 
+//videos
+let introVideo;
+let endingVideo;
+let isIntroPlaying = true;
+let isEndingPlaying = false; // true while ending video plays
+let projectEnded = false; // after ending finishes, stay black forever
+
 function preload() {
   for (let i = 0; i < numIcons; i++) {
     iconImages[i] = loadImage(iconMap[i]);
   }
+  introVideo = createVideo(["../../../public/videos/coin-intro.mp4"], () => {
+    introVideo.hide();
+  });
+  endingVideo = createVideo(["../../../public/videos/coin-ending.mp4"], () => {
+    endingVideo.hide();
+  });
 }
 
 function setup() {
@@ -69,6 +82,31 @@ function setup() {
     videoElement.hide();
   } catch (e) {}
 
+  // Play intro video before starting the game loop; tutorial follows intro end
+  if (introVideo) {
+    introVideo.elt.currentTime = 0;
+    introVideo.play();
+    introVideo.elt.onended = () => {
+      isIntroPlaying = false;
+      try {
+        introVideo.pause();
+        introVideo.elt.currentTime = 0;
+        introVideo.hide();
+      } catch (e) {}
+      // Start tutorial now and auto-hide after 8s
+      showTutorial = true;
+      setTimeout(() => {
+        showTutorial = false;
+      }, 8000);
+    };
+  } else {
+    isIntroPlaying = false;
+    showTutorial = true;
+    setTimeout(() => {
+      showTutorial = false;
+    }, 8000);
+  }
+
   for (let i = 0; i < 3; i++) {
     slotReels.push({
       position: 0,
@@ -82,10 +120,7 @@ function setup() {
   imagesLoaded = iconImages.every((img) => img && img.width > 0);
   targetAttempt = floor(random(minAttempts, maxAttempts + 1));
 
-  // Hide tutorial after 8 seconds
-  setTimeout(() => {
-    showTutorial = false;
-  }, 8000);
+  // (Removed initial tutorial timer; tutorial is started after intro or immediately if intro missing)
 }
 
 function windowResized() {
@@ -95,10 +130,37 @@ function windowResized() {
 function draw() {
   background(0);
 
+  // Final state: project ended, keep black screen
+  if (projectEnded) return;
+
+  // Intro gating
+  if (isIntroPlaying && introVideo) {
+    push();
+    imageMode(CENTER);
+    const vw = introVideo.width || introVideo.elt.videoWidth || width;
+    const vh = introVideo.height || introVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(introVideo, width / 2, height / 2, vw * scale, vh * scale);
+    pop();
+    return;
+  }
+
+  // Ending gating
+  if (isEndingPlaying && endingVideo) {
+    push();
+    imageMode(CENTER);
+    const vw = endingVideo.width || endingVideo.elt.videoWidth || width;
+    const vh = endingVideo.height || endingVideo.elt.videoHeight || height;
+    const scale = Math.min(width / vw, height / vh);
+    image(endingVideo, width / 2, height / 2, vw * scale, vh * scale);
+    pop();
+    return; // no game / confetti while ending
+  }
+
   // Draw machine
   drawSlotMachine();
 
-  // Confetti
+  // Confetti (only during active gameplay, not intro/ending/final)
   updateConfetti();
   drawConfetti();
 
@@ -411,13 +473,25 @@ function rollAll() {
     deltas.forEach((delta, i) => (indexes[i] = delta));
     isRolling = false;
     if (indexes[0] === indexes[1] && indexes[1] === indexes[2]) {
-      winState = "win2";
-      winTimer = 0;
-      createConfetti();
-      setTimeout(() => {
-        attemptCount = 0;
-        targetAttempt = floor(random(minAttempts, maxAttempts + 1));
-      }, 5000);
+      // Jackpot: immediately transition to ending video; suppress confetti & win visuals
+      winState = null;
+      confetti = []; // clear any existing confetti
+      if (!isEndingPlaying && endingVideo) {
+        isEndingPlaying = true;
+        endingVideo.elt.currentTime = 0;
+        endingVideo.play();
+        endingVideo.elt.onended = () => {
+          try {
+            endingVideo.pause();
+            endingVideo.elt.currentTime = 0;
+            endingVideo.hide();
+          } catch (e) {}
+          isEndingPlaying = false;
+          projectEnded = true; // permanent black screen
+        };
+      } else {
+        projectEnded = true; // fallback: end immediately
+      }
     } else if (
       indexes[0] === indexes[1] ||
       indexes[1] === indexes[2] ||
