@@ -204,6 +204,27 @@ function draw() {
     prevPointer.y = null;
   }
 
+  // Instruction overlay (shown only during active painting phase)
+  push();
+  const instruction =
+    "Touche les symboles du pochoir pour ajouter de la couleur";
+  textAlign(CENTER, TOP);
+  textSize(42);
+  noStroke();
+  // Background pill for readability
+  const paddingX = 28;
+  const paddingY = 14;
+  const maxWidth = width * 0.85;
+  fill(0, 140);
+  const tw = textWidth(instruction);
+  const bw = Math.min(tw + paddingX * 2, maxWidth);
+  const bx = width / 2 - bw / 2;
+  const by = 10;
+  rect(bx, by, bw, paddingY * 2 + 24, 12);
+  fill(255);
+  text(instruction, width / 2, by + paddingY + 15);
+  pop();
+
   // Periodically check coverage; if complete, trigger ending and redirect
   if (
     !isEndPlaying &&
@@ -263,8 +284,8 @@ function drawIndex(landmarks) {
   let x = mark.x * width;
   let y = mark.y * height;
   noStroke();
-  fill(0, 255, 255);
-  circle(x, y, 20);
+  fill(62, 119, 74);
+  circle(mark.x * width, mark.y * height, 10);
   const inside =
     x >= stencilX + STENCIL_MARGIN &&
     x <= stencilX + stencilW - STENCIL_MARGIN &&
@@ -292,27 +313,27 @@ function drawIndex(landmarks) {
 function drawThumb(landmarks) {
   const mark = landmarks[FINGER_TIPS.thumb];
   noStroke();
-  fill(255, 255, 0);
-  circle(mark.x * width, mark.y * height, 20);
+  fill(62, 119, 74);
+  circle(mark.x * width, mark.y * height, 5);
 }
 function drawTips(landmarks) {
   noStroke();
-  fill(0, 0, 255);
+  fill(62, 119, 74);
   for (const idx of [4, 8, 12, 16, 20]) {
-    const m = landmarks[idx];
-    circle(m.x * width, m.y * height, 10);
+    const mark = landmarks[idx];
+    circle(mark.x * width, mark.y * height, 10);
   }
 }
 function drawLandmarks(landmarks) {
   noStroke();
-  fill(255, 0, 0);
+  fill(62, 119, 74);
   for (const m of landmarks) {
     circle(m.x * width, m.y * height, 6);
   }
 }
 function drawConnections(landmarks) {
-  stroke(0, 255, 0);
-  strokeWeight(2);
+  stroke(62, 119, 74);
+  strokeWeight(14);
   for (const [aI, bI] of HAND_CONNECTIONS) {
     const a = landmarks[aI];
     const b = landmarks[bI];
